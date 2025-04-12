@@ -1,106 +1,53 @@
-using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
-using TaskManager.Data;
 using TaskManager.Models;
 
 namespace TaskManager.Services
 {
-    public interface ITaskService
-    {
-        Task<List<KanbanTask>> GetTasksByStatusAsync(KanbanTaskStatus status);
-        Task<KanbanTask> AddTaskAsync(KanbanTask task);
-        Task UpdateTaskAsync(KanbanTask task);
-        Task DeleteTaskAsync(int taskId);
-    }
-
+    // Реализация сервиса для работы с задачами (пока что хранит данные в памяти)
     public class TaskService : ITaskService
     {
-        private readonly TaskManagerDbContext _context;
+        // Список всех задач
+        private readonly List<KanbanTask> _tasks = new List<KanbanTask>();
+        // Счетчик для генерации новых ID
+        private int _nextId = 1;
 
-        public TaskService(TaskManagerDbContext context)
+        // Найти все задачи с указанным статусом
+        public Task<List<KanbanTask>> GetTasksByStatusAsync(KanbanTaskStatus status)
         {
-            _context = context ?? throw new ArgumentNullException(nameof(context));
+            return Task.FromResult(_tasks.FindAll(t => t.Status == status));
         }
 
-        public async Task<List<KanbanTask>> GetTasksByStatusAsync(KanbanTaskStatus status)
+        // Создать новую задачу и добавить её в список
+        public Task<KanbanTask> AddTaskAsync(KanbanTask task)
         {
-            try
-            {
-                return await _context.Tasks
-                    .AsNoTracking()
-                    .Where(t => t.Status == status)
-                    .ToListAsync();
-            }
-            catch (Exception ex)
-            {
-                throw new Exception($"Ошибка при получении задач со статусом {status}: {ex.Message}", ex);
-            }
+            task.Id = _nextId++;
+            task.CreatedAt = DateTime.Now;
+            _tasks.Add(task);
+            return Task.FromResult(task);
         }
 
-        public async Task<KanbanTask> AddTaskAsync(KanbanTask task)
+        // Обновить данные существующей задачи
+        public Task UpdateTaskAsync(KanbanTask task)
         {
-            if (task == null)
+            var existingTask = _tasks.Find(t => t.Id == task.Id);
+            if (existingTask != null)
             {
-                throw new ArgumentNullException(nameof(task));
+                existingTask.Title = task.Title;
+                existingTask.Description = task.Description;
+                existingTask.Status = task.Status;
+                existingTask.DueDate = task.DueDate;
+                existingTask.Priority = task.Priority;
             }
-
-            try
-            {
-                var entry = await _context.Tasks.AddAsync(task);
-                await _context.SaveChangesAsync();
-                
-                // Отсоединяем сущность от контекста после сохранения
-                _context.Entry(task).State = EntityState.Detached;
-                
-                return task;
-            }
-            catch (Exception ex)
-            {
-                throw new Exception($"Ошибка при добавлении задачи: {ex.Message}", ex);
-            }
+            return Task.CompletedTask;
         }
 
-        public async Task UpdateTaskAsync(KanbanTask task)
+        // Удалить задачу по её ID
+        public Task DeleteTaskAsync(int taskId)
         {
-            if (task == null)
-            {
-                throw new ArgumentNullException(nameof(task));
-            }
-
-            try
-            {
-                var existingTask = await _context.Tasks.FindAsync(task.Id);
-                if (existingTask != null)
-                {
-                    _context.Entry(existingTask).CurrentValues.SetValues(task);
-                    await _context.SaveChangesAsync();
-                    _context.Entry(existingTask).State = EntityState.Detached;
-                }
-            }
-            catch (Exception ex)
-            {
-                throw new Exception($"Ошибка при обновлении задачи: {ex.Message}", ex);
-            }
-        }
-
-        public async Task DeleteTaskAsync(int taskId)
-        {
-            try
-            {
-                var task = await _context.Tasks.FindAsync(taskId);
-                if (task != null)
-                {
-                    _context.Tasks.Remove(task);
-                    await _context.SaveChangesAsync();
-                }
-            }
-            catch (Exception ex)
-            {
-                throw new Exception($"Ошибка при удалении задачи: {ex.Message}", ex);
-            }
+            _tasks.RemoveAll(t => t.Id == taskId);
+            return Task.CompletedTask;
         }
     }
 } 
