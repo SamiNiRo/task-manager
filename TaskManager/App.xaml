@@ -2,9 +2,12 @@
 <prism:PrismApplication x:Class="TaskManager.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:prism="http://prismlibrary.com/">
+             xmlns:prism="http://prismlibrary.com/"
+             xmlns:converters="clr-namespace:TaskManager.Converters">
     <Application.Resources>
         <ResourceDictionary>
+            <converters:NumberToVisibilityConverter x:Key="NumberToVisibilityConverter"/>
+            <converters:GreaterThanConverter x:Key="GreaterThanConverter"/>
             <ResourceDictionary.MergedDictionaries>
                 <!-- Здесь будут стили -->
             </ResourceDictionary.MergedDictionaries>

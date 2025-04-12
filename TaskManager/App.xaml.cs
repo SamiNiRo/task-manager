@@ -7,9 +7,11 @@ using TaskManager.Data;
 using TaskManager.Services;
 using TaskManager.Views;
 using Microsoft.EntityFrameworkCore;
+using TaskManager.ViewModels;
 
 namespace TaskManager
 {
+    // Главный класс приложения
     public partial class App : PrismApplication
     {
         public App()
@@ -18,6 +20,7 @@ namespace TaskManager
             AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
         }
 
+        // Обработчик необработанных исключений в UI потоке
         private void App_DispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
         {
             MessageBox.Show($"Необработанное исключение: {e.Exception.Message}\n\nПодробности: {e.Exception.StackTrace}",
@@ -25,6 +28,7 @@ namespace TaskManager
             e.Handled = true;
         }
 
+        // Обработчик необработанных исключений в других потоках
         private void CurrentDomain_UnhandledException(object sender, UnhandledExceptionEventArgs e)
         {
             if (e.ExceptionObject is Exception ex)
@@ -34,6 +38,7 @@ namespace TaskManager
             }
         }
 
+        // Создание главного окна приложения
         protected override Window CreateShell()
         {
             try
@@ -47,53 +52,68 @@ namespace TaskManager
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Ошибка при создании главного окна: {ex.Message}\n\nПодробности: {ex.StackTrace}", 
+                MessageBox.Show($"Ошибка при создании главного окна: {ex.Message}",
                     "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
                 Current.Shutdown();
                 return null;
             }
         }
 
+        // Регистрация сервисов и зависимостей
         protected override void RegisterTypes(IContainerRegistry containerRegistry)
         {
             try
             {
-                // Создаем опции для DbContext
+                // Настройка подключения к базе данных
                 var options = new DbContextOptionsBuilder<TaskManagerDbContext>()
                     .UseSqlite("Data Source=TaskManager.db")
                     .EnableSensitiveDataLogging()
                     .Options;
 
-                // Регистрируем DbContext
+                // Регистрация контекста базы данных
                 containerRegistry.RegisterInstance(options);
                 containerRegistry.Register<TaskManagerDbContext>();
 
-                // Регистрируем сервисы
-                containerRegistry.Register<ITaskService, TaskService>();
+                // Регистрация сервиса для работы с задачами
+                containerRegistry.RegisterSingleton<ITaskService, TaskService>();
+                containerRegistry.RegisterSingleton<IDialogService, DialogService>();
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Ошибка при регистрации сервисов: {ex.Message}\n\nПодробности: {ex.StackTrace}", 
+                MessageBox.Show($"Ошибка при регистрации сервисов: {ex.Message}",
                     "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
                 throw;
             }
         }
 
-        protected override void OnStartup(StartupEventArgs e)
+        // Инициализация приложения
+        protected override async void OnStartup(StartupEventArgs e)
         {
             try
             {
                 base.OnStartup(e);
                 
                 var context = Container.Resolve<TaskManagerDbContext>();
-                context.Database.EnsureCreated();
+                await context.Database.EnsureCreatedAsync();
+
+                var mainWindow = Container.Resolve<MainWindow>();
+                var viewModel = mainWindow.DataContext as MainWindowViewModel;
+                if (viewModel != null)
+                {
+                    await viewModel.InitializeAsync();
+                }
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Ошибка при инициализации приложения: {ex.Message}\n\nПодробности: {ex.StackTrace}", 
+                MessageBox.Show($"Ошибка при инициализации приложения: {ex.Message}",
                     "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
                 Current.Shutdown();
             }
+        }
+
+        protected override void ConfigureViewModelLocator()
+        {
+            base.ConfigureViewModelLocator();
         }
     }
 } 

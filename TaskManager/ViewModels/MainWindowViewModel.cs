@@ -4,174 +4,232 @@ using System;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
-using System.Windows;
 using TaskManager.Models;
 using TaskManager.Services;
-using TaskManager.Views;
 
 namespace TaskManager.ViewModels
 {
+    // Основной класс для управления задачами в главном окне
     public class MainWindowViewModel : BindableBase
     {
+        // Сервис для работы с задачами
         private readonly ITaskService _taskService;
+        private readonly IDialogService _dialogService;
 
-        private ObservableCollection<KanbanTask> _backlogTasks;
-        public ObservableCollection<KanbanTask> BacklogTasks
+        // Список задач в бэклоге
+        private ObservableCollection<KanbanTaskViewModel> _backlogTasks;
+        public ObservableCollection<KanbanTaskViewModel> BacklogTasks
         {
             get => _backlogTasks;
             set => SetProperty(ref _backlogTasks, value);
         }
 
-        private ObservableCollection<KanbanTask> _requestTasks;
-        public ObservableCollection<KanbanTask> RequestTasks
+        // Список запрошенных задач
+        private ObservableCollection<KanbanTaskViewModel> _requestTasks;
+        public ObservableCollection<KanbanTaskViewModel> RequestTasks
         {
             get => _requestTasks;
             set => SetProperty(ref _requestTasks, value);
         }
 
-        private ObservableCollection<KanbanTask> _selectedTasks;
-        public ObservableCollection<KanbanTask> SelectedTasks
+        // Список выбранных задач
+        private ObservableCollection<KanbanTaskViewModel> _selectedTasks;
+        public ObservableCollection<KanbanTaskViewModel> SelectedTasks
         {
             get => _selectedTasks;
             set => SetProperty(ref _selectedTasks, value);
         }
 
-        private ObservableCollection<KanbanTask> _inProgressTasks;
-        public ObservableCollection<KanbanTask> InProgressTasks
+        // Список задач в работе
+        private ObservableCollection<KanbanTaskViewModel> _inProgressTasks;
+        public ObservableCollection<KanbanTaskViewModel> InProgressTasks
         {
             get => _inProgressTasks;
             set => SetProperty(ref _inProgressTasks, value);
         }
 
-        private ObservableCollection<KanbanTask> _completedTasks;
-        public ObservableCollection<KanbanTask> CompletedTasks
+        // Список выполненных задач
+        private ObservableCollection<KanbanTaskViewModel> _completedTasks;
+        public ObservableCollection<KanbanTaskViewModel> CompletedTasks
         {
             get => _completedTasks;
             set => SetProperty(ref _completedTasks, value);
         }
 
+        private KanbanTaskViewModel _editingTask;
+        public KanbanTaskViewModel EditingTask
+        {
+            get => _editingTask;
+            set => SetProperty(ref _editingTask, value);
+        }
+
+        private bool _isEditing;
+        public bool IsEditing
+        {
+            get => _isEditing;
+            set => SetProperty(ref _isEditing, value);
+        }
+
+        // Команды для добавления задач в разные колонки
         public DelegateCommand AddBacklogTaskCommand { get; private set; }
         public DelegateCommand AddRequestTaskCommand { get; private set; }
         public DelegateCommand AddSelectedTaskCommand { get; private set; }
         public DelegateCommand AddInProgressTaskCommand { get; private set; }
         public DelegateCommand AddCompletedTaskCommand { get; private set; }
-        public DelegateCommand<KanbanTask> EditTaskCommand { get; private set; }
+        public DelegateCommand<KanbanTaskViewModel> EditTaskCommand { get; private set; }
+        public DelegateCommand<KanbanTaskViewModel> SaveTaskCommand { get; private set; }
+        public DelegateCommand<KanbanTaskViewModel> CancelEditCommand { get; private set; }
+        public DelegateCommand<KanbanTaskViewModel> DeleteTaskCommand { get; private set; }
 
-        public MainWindowViewModel(ITaskService taskService)
+        // Конструктор с инициализацией команд и загрузкой задач
+        public MainWindowViewModel(ITaskService taskService, IDialogService dialogService)
         {
             _taskService = taskService ?? throw new ArgumentNullException(nameof(taskService));
+            _dialogService = dialogService ?? throw new ArgumentNullException(nameof(dialogService));
 
-            BacklogTasks = new ObservableCollection<KanbanTask>();
-            RequestTasks = new ObservableCollection<KanbanTask>();
-            SelectedTasks = new ObservableCollection<KanbanTask>();
-            InProgressTasks = new ObservableCollection<KanbanTask>();
-            CompletedTasks = new ObservableCollection<KanbanTask>();
-
-            AddBacklogTaskCommand = new DelegateCommand(async () => await ExecuteAddTaskCommandAsync(KanbanTaskStatus.Backlog));
-            AddRequestTaskCommand = new DelegateCommand(async () => await ExecuteAddTaskCommandAsync(KanbanTaskStatus.Request));
-            AddSelectedTaskCommand = new DelegateCommand(async () => await ExecuteAddTaskCommandAsync(KanbanTaskStatus.Selected));
-            AddInProgressTaskCommand = new DelegateCommand(async () => await ExecuteAddTaskCommandAsync(KanbanTaskStatus.InProgress));
-            AddCompletedTaskCommand = new DelegateCommand(async () => await ExecuteAddTaskCommandAsync(KanbanTaskStatus.Completed));
-            EditTaskCommand = new DelegateCommand<KanbanTask>(async (task) => await ExecuteEditTaskCommandAsync(task));
-
-            _ = LoadTasksAsync();
+            InitializeCollections();
+            InitializeCommands();
         }
 
-        private async Task ExecuteAddTaskCommandAsync(KanbanTaskStatus status)
+        private void InitializeCollections()
         {
-            try
-            {
-                var addTaskWindow = new AddTaskWindow
-                {
-                    Owner = Application.Current.MainWindow
-                };
-
-                if (addTaskWindow.ShowDialog() == true)
-                {
-                    var newTask = addTaskWindow.Task;
-                    newTask.Status = status;
-                    var addedTask = await _taskService.AddTaskAsync(newTask);
-                    GetCollectionForStatus(status).Add(addedTask);
-                }
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Ошибка при добавлении задачи: {ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
+            BacklogTasks = new ObservableCollection<KanbanTaskViewModel>();
+            RequestTasks = new ObservableCollection<KanbanTaskViewModel>();
+            SelectedTasks = new ObservableCollection<KanbanTaskViewModel>();
+            InProgressTasks = new ObservableCollection<KanbanTaskViewModel>();
+            CompletedTasks = new ObservableCollection<KanbanTaskViewModel>();
         }
 
-        private async Task ExecuteEditTaskCommandAsync(KanbanTask task)
+        private void InitializeCommands()
+        {
+            AddBacklogTaskCommand = new DelegateCommand(() => CreateNewTask(KanbanTaskStatus.Backlog));
+            AddRequestTaskCommand = new DelegateCommand(() => CreateNewTask(KanbanTaskStatus.Request));
+            AddSelectedTaskCommand = new DelegateCommand(() => CreateNewTask(KanbanTaskStatus.Selected));
+            AddInProgressTaskCommand = new DelegateCommand(() => CreateNewTask(KanbanTaskStatus.InProgress));
+            AddCompletedTaskCommand = new DelegateCommand(() => CreateNewTask(KanbanTaskStatus.Completed));
+            EditTaskCommand = new DelegateCommand<KanbanTaskViewModel>(StartEditingTask);
+            SaveTaskCommand = new DelegateCommand<KanbanTaskViewModel>(async (task) => await SaveTaskAsync(task));
+            CancelEditCommand = new DelegateCommand<KanbanTaskViewModel>(CancelEditing);
+            DeleteTaskCommand = new DelegateCommand<KanbanTaskViewModel>(async (task) => await DeleteTaskAsync(task));
+        }
+
+        public async Task InitializeAsync()
+        {
+            await LoadTasksAsync();
+        }
+
+        private void CreateNewTask(KanbanTaskStatus status)
+        {
+            var newTask = new KanbanTask
+            {
+                Status = status,
+                Title = "",
+                Description = "",
+                CreatedAt = DateTime.Now
+            };
+            var taskViewModel = new KanbanTaskViewModel(newTask) { IsEditing = true };
+            GetCollectionForStatus(status).Insert(0, taskViewModel);
+        }
+
+        private void StartEditingTask(KanbanTaskViewModel task)
+        {
+            if (task == null) return;
+            task.IsEditing = true;
+        }
+
+        private async Task SaveTaskAsync(KanbanTaskViewModel task)
         {
             try
             {
                 if (task == null) return;
 
-                var editTaskWindow = new AddTaskWindow(task.Clone() as KanbanTask)
+                if (string.IsNullOrWhiteSpace(task.Title))
                 {
-                    Owner = Application.Current.MainWindow
-                };
-
-                if (editTaskWindow.ShowDialog() == true)
-                {
-                    if (editTaskWindow.IsDeleteRequested)
-                    {
-                        await DeleteTaskAsync(task);
-                    }
-                    else
-                    {
-                        var updatedTask = editTaskWindow.Task;
-                        await _taskService.UpdateTaskAsync(updatedTask);
-                        await LoadTasksAsync(); // Перезагружаем все задачи
-                    }
+                    _dialogService.ShowWarning("Название задачи не может быть пустым");
+                    return;
                 }
+
+                if (task.Id == 0)
+                {
+                    // Новая задача
+                    var addedTask = await _taskService.AddTaskAsync(task.Model);
+                    var collection = GetCollectionForStatus(task.Status);
+                    var index = collection.IndexOf(task);
+                    var newTaskViewModel = new KanbanTaskViewModel(addedTask);
+                    collection[index] = newTaskViewModel;
+                }
+                else
+                {
+                    // Обновление существующей задачи
+                    await _taskService.UpdateTaskAsync(task.Model);
+                }
+
+                task.IsEditing = false;
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Ошибка при редактировании задачи: {ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                _dialogService.ShowError($"Ошибка при сохранении задачи: {ex.Message}");
             }
         }
 
-        private async Task DeleteTaskAsync(KanbanTask task)
+        private void CancelEditing(KanbanTaskViewModel task)
+        {
+            if (task == null) return;
+
+            if (task.Id == 0) // Новая задача
+            {
+                var collection = GetCollectionForStatus(task.Status);
+                collection.Remove(task);
+            }
+            else
+            {
+                task.IsEditing = false;
+            }
+        }
+
+        private async Task DeleteTaskAsync(KanbanTaskViewModel task)
         {
             try
             {
+                if (task == null || task.Id == 0) return;
+
                 await _taskService.DeleteTaskAsync(task.Id);
-                GetCollectionForStatus(task.Status).Remove(task);
+                var collection = GetCollectionForStatus(task.Status);
+                collection.Remove(task);
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Ошибка при удалении задачи: {ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                _dialogService.ShowError($"Ошибка при удалении задачи: {ex.Message}");
             }
         }
 
-        public async Task MoveTaskAsync(KanbanTask task, KanbanTaskStatus newStatus)
+        // Перемещение задачи в другую колонку
+        public async Task MoveTaskAsync(KanbanTaskViewModel task, KanbanTaskStatus newStatus)
         {
             if (task == null) return;
 
             try
             {
-                // Создаем копию задачи для обновления
-                var updatedTask = task.Clone() as KanbanTask;
-                updatedTask.Status = newStatus;
+                task.Status = newStatus;
+                await _taskService.UpdateTaskAsync(task.Model);
 
-                // Обновляем задачу в базе данных
-                await _taskService.UpdateTaskAsync(updatedTask);
+                BacklogTasks.Remove(task);
+                RequestTasks.Remove(task);
+                SelectedTasks.Remove(task);
+                InProgressTasks.Remove(task);
+                CompletedTasks.Remove(task);
 
-                // Удаляем задачу из исходной коллекции
-                GetCollectionForStatus(task.Status).Remove(task);
-
-                // Добавляем задачу в целевую коллекцию
-                var targetCollection = GetCollectionForStatus(newStatus);
-                targetCollection.Add(updatedTask);
+                GetCollectionForStatus(newStatus).Add(task);
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Ошибка при перемещении задачи: {ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
-                await LoadTasksAsync(); // Перезагружаем все задачи в случае ошибки
+                _dialogService.ShowError($"Ошибка при перемещении задачи: {ex.Message}");
+                await LoadTasksAsync();
             }
         }
 
-        private ObservableCollection<KanbanTask> GetCollectionForStatus(KanbanTaskStatus status)
+        // Получение коллекции задач по статусу
+        private ObservableCollection<KanbanTaskViewModel> GetCollectionForStatus(KanbanTaskStatus status)
         {
             return status switch
             {
@@ -184,25 +242,31 @@ namespace TaskManager.ViewModels
             };
         }
 
-        private async Task LoadTasksAsync()
+        // Загрузка всех задач из базы данных
+        public async Task LoadTasksAsync()
         {
             try
             {
-                var backlogTasks = await _taskService.GetTasksByStatusAsync(KanbanTaskStatus.Backlog);
-                var requestTasks = await _taskService.GetTasksByStatusAsync(KanbanTaskStatus.Request);
-                var selectedTasks = await _taskService.GetTasksByStatusAsync(KanbanTaskStatus.Selected);
-                var inProgressTasks = await _taskService.GetTasksByStatusAsync(KanbanTaskStatus.InProgress);
-                var completedTasks = await _taskService.GetTasksByStatusAsync(KanbanTaskStatus.Completed);
+                var loadTasks = new[]
+                {
+                    _taskService.GetTasksByStatusAsync(KanbanTaskStatus.Backlog),
+                    _taskService.GetTasksByStatusAsync(KanbanTaskStatus.Request),
+                    _taskService.GetTasksByStatusAsync(KanbanTaskStatus.Selected),
+                    _taskService.GetTasksByStatusAsync(KanbanTaskStatus.InProgress),
+                    _taskService.GetTasksByStatusAsync(KanbanTaskStatus.Completed)
+                };
 
-                BacklogTasks = new ObservableCollection<KanbanTask>(backlogTasks);
-                RequestTasks = new ObservableCollection<KanbanTask>(requestTasks);
-                SelectedTasks = new ObservableCollection<KanbanTask>(selectedTasks);
-                InProgressTasks = new ObservableCollection<KanbanTask>(inProgressTasks);
-                CompletedTasks = new ObservableCollection<KanbanTask>(completedTasks);
+                var results = await Task.WhenAll(loadTasks);
+
+                BacklogTasks = new ObservableCollection<KanbanTaskViewModel>(results[0].Select(t => new KanbanTaskViewModel(t)));
+                RequestTasks = new ObservableCollection<KanbanTaskViewModel>(results[1].Select(t => new KanbanTaskViewModel(t)));
+                SelectedTasks = new ObservableCollection<KanbanTaskViewModel>(results[2].Select(t => new KanbanTaskViewModel(t)));
+                InProgressTasks = new ObservableCollection<KanbanTaskViewModel>(results[3].Select(t => new KanbanTaskViewModel(t)));
+                CompletedTasks = new ObservableCollection<KanbanTaskViewModel>(results[4].Select(t => new KanbanTaskViewModel(t)));
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Ошибка при загрузке задач: {ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                _dialogService.ShowError($"Ошибка при загрузке задач: {ex.Message}");
             }
         }
     }

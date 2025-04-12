@@ -4,9 +4,23 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:prism="http://prismlibrary.com/"
         xmlns:models="clr-namespace:TaskManager.Models"
-        Title="Классный проект" Height="800" Width="1200"
+        Title="Классный проект" Height="800" Width="1400"
         prism:ViewModelLocator.AutoWireViewModel="True">
     <Window.Resources>
+        <!-- Цвета колонок -->
+        <SolidColorBrush x:Key="BacklogColumnBrush" Color="#3498db"/>
+        <SolidColorBrush x:Key="BacklogHeaderBrush" Color="#2980b9"/>
+        <SolidColorBrush x:Key="RequestColumnBrush" Color="#16a085"/>
+        <SolidColorBrush x:Key="RequestHeaderBrush" Color="#147a6c"/>
+        <SolidColorBrush x:Key="SelectedColumnBrush" Color="#9b59b6"/>
+        <SolidColorBrush x:Key="SelectedHeaderBrush" Color="#8e44ad"/>
+        <SolidColorBrush x:Key="InProgressColumnBrush" Color="#e67e22"/>
+        <SolidColorBrush x:Key="InProgressHeaderBrush" Color="#d35400"/>
+        <SolidColorBrush x:Key="CompletedColumnBrush" Color="#2ecc71"/>
+        <SolidColorBrush x:Key="CompletedHeaderBrush" Color="#27ae60"/>
+        <SolidColorBrush x:Key="DeleteButtonBrush" Color="#ff4444"/>
+        <SolidColorBrush x:Key="HoverBackgroundBrush" Color="#F8F8F8"/>
+
         <Style x:Key="TaskBorderStyle" TargetType="Border">
             <Setter Property="Background" Value="White"/>
             <Setter Property="CornerRadius" Value="5"/>
@@ -19,18 +33,85 @@
             </Style.Triggers>
         </Style>
 
+        <Style x:Key="EditButtonStyle" TargetType="Button">
+            <Setter Property="Width" Value="70"/>
+            <Setter Property="Margin" Value="0,0,5,0"/>
+            <Setter Property="Height" Value="25"/>
+        </Style>
+
+        <Style x:Key="DeleteButtonStyle" TargetType="Button" BasedOn="{StaticResource EditButtonStyle}">
+            <Setter Property="Background" Value="#ff4444"/>
+            <Setter Property="Foreground" Value="White"/>
+        </Style>
+
         <DataTemplate x:Key="TaskTemplate">
-            <Border Style="{StaticResource TaskBorderStyle}">
-                <StackPanel Width="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=ListViewItem}}">
-                    <TextBlock Text="{Binding Title}" 
-                             TextWrapping="Wrap" 
-                             FontWeight="SemiBold"/>
-                    <TextBlock Text="{Binding Description}" 
-                             TextWrapping="Wrap" 
-                             Margin="0,5,0,5" 
-                             Opacity="0.7"/>
-                </StackPanel>
+            <Border x:Name="TaskBorder" Background="White" CornerRadius="5" Margin="2" Padding="5">
+                <Grid>
+                    <Grid x:Name="ViewMode">
+                        <StackPanel>
+                            <TextBlock Text="{Binding Title}" 
+                                     TextWrapping="Wrap" 
+                                     FontWeight="SemiBold"/>
+                            <TextBlock Text="{Binding Description}" 
+                                     TextWrapping="Wrap" 
+                                     Margin="0,5,0,5" 
+                                     Opacity="0.7"/>
+                        </StackPanel>
+                    </Grid>
+                    <Grid x:Name="EditMode" Visibility="Collapsed">
+                        <StackPanel>
+                            <TextBox Text="{Binding Title, UpdateSourceTrigger=PropertyChanged}"
+                                    Margin="0,0,0,5"/>
+                            <TextBox Text="{Binding Description, UpdateSourceTrigger=PropertyChanged}"
+                                    TextWrapping="Wrap"
+                                    AcceptsReturn="True"
+                                    MinHeight="60"
+                                    Margin="0,0,0,5"/>
+                            <StackPanel Orientation="Horizontal" 
+                                      HorizontalAlignment="Right"
+                                      Margin="0,0,0,5">
+                                <Button x:Name="DeleteButton"
+                                        Content="Удалить"
+                                        Command="{Binding DataContext.DeleteTaskCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                        CommandParameter="{Binding}"
+                                        Style="{StaticResource DeleteButtonStyle}"/>
+                                <Button Content="Отмена"
+                                        Command="{Binding DataContext.CancelEditCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                        CommandParameter="{Binding}"
+                                        Style="{StaticResource EditButtonStyle}"/>
+                                <Button Content="Сохранить"
+                                        Command="{Binding DataContext.SaveTaskCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                        CommandParameter="{Binding}"
+                                        Style="{StaticResource EditButtonStyle}"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Grid>
+                </Grid>
             </Border>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding IsEditing}" Value="True">
+                    <Setter TargetName="ViewMode" Property="Visibility" Value="Collapsed"/>
+                    <Setter TargetName="EditMode" Property="Visibility" Value="Visible"/>
+                    <Setter TargetName="TaskBorder" Property="Background" Value="#F8F8F8"/>
+                </DataTrigger>
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding IsEditing}" Value="True"/>
+                        <Condition Binding="{Binding Id}" Value="0"/>
+                    </MultiDataTrigger.Conditions>
+                    <Setter TargetName="DeleteButton" Property="Visibility" Value="Collapsed"/>
+                </MultiDataTrigger>
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding IsEditing}" Value="True"/>
+                        <Condition Binding="{Binding Id, ConverterParameter=0, Converter={StaticResource GreaterThanConverter}}" Value="True"/>
+                    </MultiDataTrigger.Conditions>
+                    <Setter TargetName="DeleteButton" Property="Visibility" Value="Visible"/>
+                </MultiDataTrigger>
+                <DataTrigger Binding="{Binding RelativeSource={RelativeSource Mode=FindAncestor, AncestorType=ListViewItem}, Path=IsMouseOver}" Value="True">
+                    <Setter TargetName="TaskBorder" Property="Background" Value="#F8F8F8"/>
+                </DataTrigger>
+            </DataTemplate.Triggers>
         </DataTemplate>
 
         <Style TargetType="ListView">
@@ -83,21 +164,22 @@
         </Style>
 
         <Style x:Key="AddButtonStyle" TargetType="Button">
-            <Setter Property="Width" Value="40"/>
-            <Setter Property="Height" Value="40"/>
-            <Setter Property="Background" Value="White"/>
+            <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Width" Value="30"/>
+            <Setter Property="Height" Value="30"/>
+            <Setter Property="Margin" Value="0,0,5,0"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Grid>
-                            <Ellipse Fill="{TemplateBinding Background}"/>
-                            <Grid>
-                                <!-- Вертикальная линия -->
-                                <Rectangle Width="2" Height="20" Fill="#666"/>
-                                <!-- Горизонтальная линия -->
-                                <Rectangle Width="20" Height="2" Fill="#666"/>
-                            </Grid>
+                            <Ellipse Fill="White" Opacity="0.2"/>
+                            <Path Fill="White" 
+                                  Data="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z"
+                                  Width="16"
+                                  Height="16"
+                                  Stretch="Uniform"/>
                         </Grid>
                     </ControlTemplate>
                 </Setter.Value>
@@ -106,19 +188,38 @@
 
         <Style x:Key="ColumnHeaderStyle" TargetType="TextBlock">
             <Setter Property="Foreground" Value="White"/>
-            <Setter Property="FontSize" Value="18"/>
-            <Setter Property="Margin" Value="10"/>
-            <Setter Property="HorizontalAlignment" Value="Left"/>
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
         </Style>
 
         <Style x:Key="ColumnIconStyle" TargetType="Path">
+            <Setter Property="Fill" Value="White"/>
             <Setter Property="Width" Value="20"/>
             <Setter Property="Height" Value="20"/>
-            <Setter Property="Fill" Value="White"/>
-            <Setter Property="Stretch" Value="Uniform"/>
-            <Setter Property="VerticalAlignment" Value="Center"/>
             <Setter Property="Margin" Value="0,0,5,0"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
+        <Style x:Key="KanbanColumnStyle" TargetType="Border">
+            <Setter Property="Margin" Value="5"/>
+            <Setter Property="CornerRadius" Value="5"/>
+        </Style>
+
+        <Style x:Key="KanbanColumnHeaderStyle" TargetType="Border">
+            <Setter Property="DockPanel.Dock" Value="Top"/>
+            <Setter Property="CornerRadius" Value="5,5,0,0"/>
+            <Setter Property="Padding" Value="10,5"/>
+        </Style>
+
+        <Style x:Key="KanbanListViewStyle" TargetType="ListView" BasedOn="{StaticResource {x:Type ListView}}">
+            <Setter Property="AllowDrop" Value="True"/>
+            <Setter Property="Margin" Value="5"/>
+            <Setter Property="ItemTemplate" Value="{StaticResource TaskTemplate}"/>
+            <EventSetter Event="Drop" Handler="ListView_Drop"/>
+            <EventSetter Event="PreviewMouseLeftButtonDown" Handler="ListView_PreviewMouseLeftButtonDown"/>
+            <EventSetter Event="MouseMove" Handler="ListView_MouseMove"/>
+            <EventSetter Event="MouseDoubleClick" Handler="ListView_MouseDoubleClick"/>
         </Style>
     </Window.Resources>
     
@@ -132,15 +233,16 @@
         </Grid.ColumnDefinitions>
 
         <!-- Бэклог -->
-        <Border Grid.Column="0" Background="#3498db" Margin="5">
+        <Border Grid.Column="0" 
+                Background="{StaticResource BacklogColumnBrush}" 
+                Style="{StaticResource KanbanColumnStyle}">
             <DockPanel>
-                <Border DockPanel.Dock="Top" Background="#2980b9" CornerRadius="5,5,0,0">
-                    <DockPanel Margin="10,5">
+                <Border Background="{StaticResource BacklogHeaderBrush}" 
+                        Style="{StaticResource KanbanColumnHeaderStyle}">
+                    <DockPanel>
                         <Button Style="{StaticResource AddButtonStyle}"
                                 Command="{Binding AddBacklogTaskCommand}"
-                                DockPanel.Dock="Right"
-                                Margin="0,0,5,0"
-                                Width="30" Height="30"/>
+                                DockPanel.Dock="Right"/>
                         <StackPanel Orientation="Horizontal">
                             <Path Style="{StaticResource ColumnIconStyle}"
                                   Data="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z"/>
@@ -149,28 +251,23 @@
                         </StackPanel>
                     </DockPanel>
                 </Border>
-                <ListView ItemsSource="{Binding BacklogTasks}" 
-                         ItemTemplate="{StaticResource TaskTemplate}"
-                         AllowDrop="True"
-                         Drop="ListView_Drop"
-                         PreviewMouseLeftButtonDown="ListView_PreviewMouseLeftButtonDown"
-                         MouseMove="ListView_MouseMove"
-                         Tag="{x:Static models:KanbanTaskStatus.Backlog}"
-                         MouseDoubleClick="ListView_MouseDoubleClick"
-                         Margin="5"/>
+                <ListView ItemsSource="{Binding BacklogTasks}"
+                         Style="{StaticResource KanbanListViewStyle}"
+                         Tag="{x:Static models:KanbanTaskStatus.Backlog}"/>
             </DockPanel>
         </Border>
 
         <!-- Запросы -->
-        <Border Grid.Column="1" Background="#16a085" Margin="5">
+        <Border Grid.Column="1" 
+                Background="{StaticResource RequestColumnBrush}" 
+                Style="{StaticResource KanbanColumnStyle}">
             <DockPanel>
-                <Border DockPanel.Dock="Top" Background="#147a6c" CornerRadius="5,5,0,0">
-                    <DockPanel Margin="10,5">
+                <Border Background="{StaticResource RequestHeaderBrush}" 
+                        Style="{StaticResource KanbanColumnHeaderStyle}">
+                    <DockPanel>
                         <Button Style="{StaticResource AddButtonStyle}"
                                 Command="{Binding AddRequestTaskCommand}"
-                                DockPanel.Dock="Right"
-                                Margin="0,0,5,0"
-                                Width="30" Height="30"/>
+                                DockPanel.Dock="Right"/>
                         <StackPanel Orientation="Horizontal">
                             <Path Style="{StaticResource ColumnIconStyle}"
                                   Data="M20,4C21.11,4 22,4.89 22,6V18C22,19.11 21.11,20 20,20H4C2.89,20 2,19.11 2,18V6C2,4.89 2.89,4 4,4H20M8.5,15V9H7.25V12.5L4.75,9H3.5V15H4.75V11.5L7.3,15H8.5M13.5,15V9H12V13.5L9.5,9H8.25V15H9.75V11.5L12.3,15H13.5M20,15V9H18.5V13.5L16,9H14.75V15H16.25V11.5L18.8,15H20Z"/>
@@ -198,9 +295,7 @@
                     <DockPanel Margin="10,5">
                         <Button Style="{StaticResource AddButtonStyle}"
                                 Command="{Binding AddSelectedTaskCommand}"
-                                DockPanel.Dock="Right"
-                                Margin="0,0,5,0"
-                                Width="30" Height="30"/>
+                                DockPanel.Dock="Right"/>
                         <StackPanel Orientation="Horizontal">
                             <Path Style="{StaticResource ColumnIconStyle}"
                                   Data="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4M12,6A6,6 0 0,0 6,12A6,6 0 0,0 12,18A6,6 0 0,0 18,12A6,6 0 0,0 12,6M12,8A4,4 0 0,1 16,12A4,4 0 0,1 12,16A4,4 0 0,1 8,12A4,4 0 0,1 12,8Z"/>
@@ -228,9 +323,7 @@
                     <DockPanel Margin="10,5">
                         <Button Style="{StaticResource AddButtonStyle}"
                                 Command="{Binding AddInProgressTaskCommand}"
-                                DockPanel.Dock="Right"
-                                Margin="0,0,5,0"
-                                Width="30" Height="30"/>
+                                DockPanel.Dock="Right"/>
                         <StackPanel Orientation="Horizontal">
                             <Path Style="{StaticResource ColumnIconStyle}"
                                   Data="M13,2.03V2.05L13,4.05C17.39,4.59 20.5,8.58 19.96,12.97C19.5,16.61 16.64,19.5 13,19.93V21.93C18.5,21.38 22.5,16.5 21.95,11C21.5,6.25 17.73,2.5 13,2.03M11,2.06C9.05,2.25 7.19,3 5.67,4.26L7.1,5.74C8.22,4.84 9.57,4.26 11,4.06V2.06M4.26,5.67C3,7.19 2.25,9.04 2.05,11H4.05C4.24,9.58 4.8,8.23 5.69,7.1L4.26,5.67M2.06,13C2.26,14.96 3.03,16.81 4.27,18.33L5.69,16.9C4.81,15.77 4.24,14.42 4.06,13H2.06M7.1,18.37L5.67,19.74C7.18,21 9.04,21.79 11,22V20C9.58,19.82 8.23,19.25 7.1,18.37M16.82,15.19L12.71,11.08C13.12,10.04 12.89,8.82 12.03,7.97C11.13,7.06 9.78,6.88 8.69,7.38L10.63,9.32L9.28,10.68L7.29,8.73C6.75,9.82 7,11.17 7.88,12.08C8.74,12.94 9.96,13.16 11,12.76L15.11,16.86C15.29,17.05 15.56,17.05 15.74,16.86L16.82,15.78C17,15.6 17,15.33 16.82,15.19M12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20Z"/>
@@ -258,9 +351,7 @@
                     <DockPanel Margin="10,5">
                         <Button Style="{StaticResource AddButtonStyle}"
                                 Command="{Binding AddCompletedTaskCommand}"
-                                DockPanel.Dock="Right"
-                                Margin="0,0,5,0"
-                                Width="30" Height="30"/>
+                                DockPanel.Dock="Right"/>
                         <StackPanel Orientation="Horizontal">
                             <Path Style="{StaticResource ColumnIconStyle}"
                                   Data="M12 2C6.5 2 2 6.5 2 12S6.5 22 12 22 22 17.5 22 12 17.5 2 12 2M12 20C7.59 20 4 16.41 4 12S7.59 4 12 4 20 7.59 20 12 16.41 20 12 20M16.59 7.58L10 14.17L7.41 11.59L6 13L10 17L18 9L16.59 7.58Z"/>
