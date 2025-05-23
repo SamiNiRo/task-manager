@@ -2,52 +2,54 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using TaskManager.Models;
+using Microsoft.EntityFrameworkCore;
+using System.Linq;
+using TaskManager.Data;
 
 namespace TaskManager.Services
 {
-    // Реализация сервиса для работы с задачами (пока что хранит данные в памяти)
+    // Реализация сервиса для работы с задачами
     public class TaskService : ITaskService
     {
-        // Список всех задач
-        private readonly List<KanbanTask> _tasks = new List<KanbanTask>();
-        // Счетчик для генерации новых ID
-        private int _nextId = 1;
+        // Контекст базы данных
+        private readonly TaskManagerDbContext _dbContext;
 
-        // Найти все задачи с указанным статусом
-        public Task<List<KanbanTask>> GetTasksByStatusAsync(KanbanTaskStatus status)
+        // Конструктор с инициализацией контекста базы данных
+        public TaskService(TaskManagerDbContext dbContext)
         {
-            return Task.FromResult(_tasks.FindAll(t => t.Status == status));
+            _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
         }
 
-        // Создать новую задачу и добавить её в список
-        public Task<KanbanTask> AddTaskAsync(KanbanTask task)
+        // Получить все задачи с определенным статусом
+        public async Task<List<KanbanTask>> GetTasksByStatusAsync(KanbanTaskStatus status)
         {
-            task.Id = _nextId++;
-            task.CreatedAt = DateTime.Now;
-            _tasks.Add(task);
-            return Task.FromResult(task);
+            return await _dbContext.Tasks.Where(t => t.Status == status).ToListAsync();
         }
 
-        // Обновить данные существующей задачи
-        public Task UpdateTaskAsync(KanbanTask task)
+        // Добавить новую задачу
+        public async Task<KanbanTask> AddTaskAsync(KanbanTask task)
         {
-            var existingTask = _tasks.Find(t => t.Id == task.Id);
-            if (existingTask != null)
+            await _dbContext.Tasks.AddAsync(task);
+            await _dbContext.SaveChangesAsync();
+            return task;
+        }
+
+        // Обновить существующую задачу
+        public async Task UpdateTaskAsync(KanbanTask task)
+        {
+            _dbContext.Tasks.Update(task);
+            await _dbContext.SaveChangesAsync();
+        }
+
+        // Удалить задачу по её номеру
+        public async Task DeleteTaskAsync(int taskId)
+        {
+            var taskToRemove = await _dbContext.Tasks.FirstOrDefaultAsync(t => t.Id == taskId);
+            if (taskToRemove != null)
             {
-                existingTask.Title = task.Title;
-                existingTask.Description = task.Description;
-                existingTask.Status = task.Status;
-                existingTask.DueDate = task.DueDate;
-                existingTask.Priority = task.Priority;
+                _dbContext.Tasks.Remove(taskToRemove);
+                await _dbContext.SaveChangesAsync();
             }
-            return Task.CompletedTask;
-        }
-
-        // Удалить задачу по её ID
-        public Task DeleteTaskAsync(int taskId)
-        {
-            _tasks.RemoveAll(t => t.Id == taskId);
-            return Task.CompletedTask;
         }
     }
 } 
