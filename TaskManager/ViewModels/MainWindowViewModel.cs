@@ -6,15 +6,18 @@ using System.Linq;
 using System.Threading.Tasks;
 using TaskManager.Models;
 using TaskManager.Services;
+using System.Windows.Input;
+using TaskManager.Behaviors;
 
 namespace TaskManager.ViewModels
 {
     // Основной класс для управления задачами в главном окне
-    public class MainWindowViewModel : BindableBase
+    public class MainWindowViewModel : BindableBase, IDragDropHandler
     {
         // Сервис для работы с задачами
         private readonly ITaskService _taskService;
         private readonly IDialogService _dialogService;
+        private readonly INotificationService _notificationService;
 
         // Список задач в бэклоге
         private ObservableCollection<KanbanTaskViewModel> _backlogTasks;
@@ -71,21 +74,22 @@ namespace TaskManager.ViewModels
         }
 
         // Команды для добавления задач в разные колонки
-        public DelegateCommand AddBacklogTaskCommand { get; private set; }
-        public DelegateCommand AddRequestTaskCommand { get; private set; }
-        public DelegateCommand AddSelectedTaskCommand { get; private set; }
-        public DelegateCommand AddInProgressTaskCommand { get; private set; }
-        public DelegateCommand AddCompletedTaskCommand { get; private set; }
-        public DelegateCommand<KanbanTaskViewModel> EditTaskCommand { get; private set; }
-        public DelegateCommand<KanbanTaskViewModel> SaveTaskCommand { get; private set; }
-        public DelegateCommand<KanbanTaskViewModel> CancelEditCommand { get; private set; }
-        public DelegateCommand<KanbanTaskViewModel> DeleteTaskCommand { get; private set; }
+        public ICommand AddBacklogTaskCommand { get; private set; }
+        public ICommand AddRequestTaskCommand { get; private set; }
+        public ICommand AddSelectedTaskCommand { get; private set; }
+        public ICommand AddInProgressTaskCommand { get; private set; }
+        public ICommand AddCompletedTaskCommand { get; private set; }
+        public ICommand EditTaskCommand { get; private set; }
+        public ICommand SaveTaskCommand { get; private set; }
+        public ICommand CancelEditCommand { get; private set; }
+        public ICommand DeleteTaskCommand { get; private set; }
 
         // Конструктор с инициализацией команд и загрузкой задач
-        public MainWindowViewModel(ITaskService taskService, IDialogService dialogService)
+        public MainWindowViewModel(ITaskService taskService, IDialogService dialogService, INotificationService notificationService)
         {
             _taskService = taskService ?? throw new ArgumentNullException(nameof(taskService));
             _dialogService = dialogService ?? throw new ArgumentNullException(nameof(dialogService));
+            _notificationService = notificationService ?? throw new ArgumentNullException(nameof(notificationService));
 
             InitializeCollections();
             InitializeCommands();
@@ -98,6 +102,13 @@ namespace TaskManager.ViewModels
             SelectedTasks = new ObservableCollection<KanbanTaskViewModel>();
             InProgressTasks = new ObservableCollection<KanbanTaskViewModel>();
             CompletedTasks = new ObservableCollection<KanbanTaskViewModel>();
+
+            // Подписываемся на изменения коллекций для обновления счетчиков
+            BacklogTasks.CollectionChanged += (s, e) => RaisePropertyChanged(nameof(BacklogTaskCount));
+            RequestTasks.CollectionChanged += (s, e) => RaisePropertyChanged(nameof(RequestTaskCount));
+            SelectedTasks.CollectionChanged += (s, e) => RaisePropertyChanged(nameof(SelectedTaskCount));
+            InProgressTasks.CollectionChanged += (s, e) => RaisePropertyChanged(nameof(InProgressTaskCount));
+            CompletedTasks.CollectionChanged += (s, e) => RaisePropertyChanged(nameof(CompletedTaskCount));
         }
 
         private void InitializeCommands()
@@ -145,7 +156,7 @@ namespace TaskManager.ViewModels
 
                 if (string.IsNullOrWhiteSpace(task.Title))
                 {
-                    _dialogService.ShowWarning("Название задачи не может быть пустым");
+                    _notificationService.ShowNotification("Заголовок задачи не может быть пустым!");
                     return;
                 }
 
@@ -258,16 +269,75 @@ namespace TaskManager.ViewModels
 
                 var results = await Task.WhenAll(loadTasks);
 
-                BacklogTasks = new ObservableCollection<KanbanTaskViewModel>(results[0].Select(t => new KanbanTaskViewModel(t)));
-                RequestTasks = new ObservableCollection<KanbanTaskViewModel>(results[1].Select(t => new KanbanTaskViewModel(t)));
-                SelectedTasks = new ObservableCollection<KanbanTaskViewModel>(results[2].Select(t => new KanbanTaskViewModel(t)));
-                InProgressTasks = new ObservableCollection<KanbanTaskViewModel>(results[3].Select(t => new KanbanTaskViewModel(t)));
-                CompletedTasks = new ObservableCollection<KanbanTaskViewModel>(results[4].Select(t => new KanbanTaskViewModel(t)));
+                // Очищаем существующие коллекции перед добавлением новых данных
+                BacklogTasks.Clear();
+                RequestTasks.Clear();
+                SelectedTasks.Clear();
+                InProgressTasks.Clear();
+                CompletedTasks.Clear();
+
+                // Добавляем загруженные задачи в коллекции
+                foreach (var task in results[0].Select(t => new KanbanTaskViewModel(t)))
+                {
+                    BacklogTasks.Add(task);
+                }
+                foreach (var task in results[1].Select(t => new KanbanTaskViewModel(t)))
+                {
+                    RequestTasks.Add(task);
+                }
+                foreach (var task in results[2].Select(t => new KanbanTaskViewModel(t)))
+                {
+                    SelectedTasks.Add(task);
+                }
+                foreach (var task in results[3].Select(t => new KanbanTaskViewModel(t)))
+                {
+                    InProgressTasks.Add(task);
+                }
+                foreach (var task in results[4].Select(t => new KanbanTaskViewModel(t)))
+                {
+                    CompletedTasks.Add(task);
+                }
             }
             catch (Exception ex)
             {
                 _dialogService.ShowError($"Ошибка при загрузке задач: {ex.Message}");
             }
         }
+
+        public void OnDragStart(object item)
+        {
+            // Можно добавить визуальную обратную связь при начале перетаскивания
+        }
+
+        public void OnDragEnd(object item)
+        {
+            // Можно добавить визуальную обратную связь при окончании перетаскивания
+        }
+
+        public async void OnDrop(object item, KanbanTaskStatus targetStatus)
+        {
+            if (item is KanbanTaskViewModel task && task.Status != targetStatus)
+            {
+                await MoveTaskAsync(task, targetStatus);
+            }
+        }
+
+        public void OnItemDoubleClick(object item)
+        {
+            if (item is KanbanTaskViewModel task)
+            {
+                StartEditingTask(task);
+            }
+        }
+
+        // Коллекция активных уведомлений для привязки в View
+        public ObservableCollection<NotificationViewModel> Notifications => (_notificationService as NotificationService)?.Notifications;
+
+        // Свойства для счетчиков задач (отображаются в заголовках колонок)
+        public int BacklogTaskCount => BacklogTasks.Count;
+        public int RequestTaskCount => RequestTasks.Count;
+        public int SelectedTaskCount => SelectedTasks.Count;
+        public int InProgressTaskCount => InProgressTasks.Count;
+        public int CompletedTaskCount => CompletedTasks.Count;
     }
 } 

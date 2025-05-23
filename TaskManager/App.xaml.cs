@@ -65,8 +65,11 @@ namespace TaskManager
             try
             {
                 // Настройка подключения к базе данных
+                var dbPath = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "TaskManager", "TaskManager.db");
+                System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(dbPath));
+
                 var options = new DbContextOptionsBuilder<TaskManagerDbContext>()
-                    .UseSqlite("Data Source=TaskManager.db")
+                    .UseSqlite($"Data Source={dbPath}")
                     .EnableSensitiveDataLogging()
                     .Options;
 
@@ -77,6 +80,7 @@ namespace TaskManager
                 // Регистрация сервиса для работы с задачами
                 containerRegistry.RegisterSingleton<ITaskService, TaskService>();
                 containerRegistry.RegisterSingleton<IDialogService, DialogService>();
+                containerRegistry.RegisterSingleton<INotificationService, NotificationService>();
             }
             catch (Exception ex)
             {
@@ -96,12 +100,13 @@ namespace TaskManager
                 var context = Container.Resolve<TaskManagerDbContext>();
                 await context.Database.EnsureCreatedAsync();
 
+                // Загрузка данных будет происходить в обработчике Loaded окна MainWindow
                 var mainWindow = Container.Resolve<MainWindow>();
-                var viewModel = mainWindow.DataContext as MainWindowViewModel;
-                if (viewModel != null)
-                {
-                    await viewModel.InitializeAsync();
-                }
+                // var viewModel = mainWindow.DataContext as MainWindowViewModel;
+                // if (viewModel != null)
+                // {
+                //     await viewModel.InitializeAsync();
+                // }
             }
             catch (Exception ex)
             {
